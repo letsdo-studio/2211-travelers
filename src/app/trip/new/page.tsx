@@ -176,6 +176,7 @@ export default function NewTripPage() {
       profileId,
       status: 'planning',
       itinerary,
+      bookings: [],
       createdAt: new Date().toISOString(),
     };
 

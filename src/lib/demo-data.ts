@@ -53,6 +53,7 @@ function generateGenericItinerary(
           tips: 'כדאי להתחיל מוקדם לפני הקהל. מומלץ לקחת מדריך מקומי',
           crowdLevel: 'בינוני - עמוס מ-11:00',
           bestTimeToVisit: '08:00-10:00 בבוקר',
+          status: 'suggested',
         },
         {
           id: `act-${i}-2`,
@@ -66,6 +67,7 @@ function generateGenericItinerary(
           tips: 'להביא מזומן, לטעום הכל! לשאול את המוכרים להמלצות',
           crowdLevel: 'עמוס בצהריים',
           bestTimeToVisit: '08:00-10:00 או 16:00-18:00',
+          status: 'suggested',
         },
         {
           id: `act-${i}-3`,
@@ -79,6 +81,7 @@ function generateGenericItinerary(
           tips: 'להגיע 30 דקות לפני השקיעה. לקחת שכבה חמה',
           crowdLevel: 'נמוך בימי חול',
           bestTimeToVisit: 'שעה לפני השקיעה',
+          status: 'suggested',
         },
         {
           id: `act-${i}-4`,
@@ -92,6 +95,7 @@ function generateGenericItinerary(
           tips: 'יום שלישי כניסה חינם. יש אודיו גייד בעברית',
           crowdLevel: 'נמוך',
           bestTimeToVisit: 'אחרי הצהריים',
+          status: 'suggested',
         },
       ],
       meals: [
@@ -104,6 +108,7 @@ function generateGenericItinerary(
           location: 'ליד הכיכר המרכזית',
           rating: '4.7/5',
           source: 'המלצות מטיילים + Google Reviews',
+          status: 'suggested',
         },
         {
           id: `meal-${i}-2`,
@@ -114,6 +119,7 @@ function generateGenericItinerary(
           location: 'בתוך השוק',
           rating: '4.5/5',
           source: 'TripAdvisor Top 10',
+          status: 'suggested',
         },
         {
           id: `meal-${i}-3`,
@@ -124,6 +130,7 @@ function generateGenericItinerary(
           location: 'ברובע הישן',
           rating: '4.6/5',
           source: 'המלצת מקומיים',
+          status: 'suggested',
         },
         {
           id: `meal-${i}-4`,
@@ -134,6 +141,7 @@ function generateGenericItinerary(
           location: 'ליד נקודת התצפית',
           rating: '4.8/5',
           source: 'Google Maps',
+          status: 'suggested',
         },
       ],
       transit:

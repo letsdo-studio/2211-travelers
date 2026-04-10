@@ -26,6 +26,7 @@ export interface Trip {
   profileId: string;
   status: 'planning' | 'active' | 'completed';
   itinerary: DayPlan[];
+  bookings: Booking[];
   createdAt: string;
 }
 
@@ -52,6 +53,9 @@ export interface Activity {
   tips: string;
   crowdLevel: string;
   bestTimeToVisit: string;
+  status: 'suggested' | 'confirmed' | 'done' | 'skipped';
+  distanceFromHotel?: string;
+  transportMode?: string;
 }
 
 export interface Meal {
@@ -63,6 +67,7 @@ export interface Meal {
   location: string;
   rating: string;
   source: string;
+  status: 'suggested' | 'confirmed' | 'done' | 'skipped';
 }
 
 export interface Accommodation {
@@ -74,6 +79,7 @@ export interface Accommodation {
   location: string;
   rating: string;
   bookingStatus: 'suggested' | 'booked' | 'skipped';
+  confirmationNumber?: string;
   alternatives: string[];
 }
 
@@ -87,6 +93,28 @@ export interface Transit {
   cost: string;
   scenicNotes: string;
   tips: string;
+}
+
+export interface Booking {
+  id: string;
+  type: 'hotel' | 'flight' | 'transport' | 'activity' | 'restaurant';
+  title: string;
+  status: 'pending' | 'confirmed' | 'cancelled';
+  confirmationNumber: string;
+  date: string;
+  time: string;
+  location: string;
+  details: string;
+  cost: string;
+  notes: string;
+}
+
+export interface RadiusZone {
+  label: string;
+  minKm: number;
+  maxKm: number;
+  transportModes: string[];
+  activities: Activity[];
 }
 
 export interface AISuggestion {
