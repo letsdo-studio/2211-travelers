@@ -156,11 +156,16 @@ export default function NewTripPage() {
         const response = await fetch('/api/plan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profile, destination: form.destination, startDate: form.startDate, numDays }),
+          body: JSON.stringify({ profile, destination: form.destination, startDate: form.startDate, numDays, apiKey: settings.geminiApiKey }),
         });
+        if (!response.ok) throw new Error('API error');
         const data = await response.json();
+        if (!data.itinerary || !Array.isArray(data.itinerary) || data.itinerary.length === 0) {
+          throw new Error('Invalid itinerary');
+        }
         itinerary = data.itinerary;
-      } catch {
+      } catch (err) {
+        console.error('Gemini plan error:', err);
         itinerary = generateDemoItinerary(form.destination, form.startDate, numDays);
       }
     } else {
