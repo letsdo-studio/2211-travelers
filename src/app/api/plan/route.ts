@@ -4,16 +4,19 @@ import { TravelerProfile } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
   try {
-    const { profile, destination, startDate, numDays, apiKey } = await request.json() as {
+    const { profile, destination, startDate, numDays, apiKey: clientKey } = await request.json() as {
       profile: TravelerProfile;
       destination: string;
       startDate: string;
       numDays: number;
-      apiKey: string;
+      apiKey?: string;
     };
 
+    // Server env var takes priority, then client-sent key
+    const apiKey = process.env.GEMINI_API_KEY || clientKey;
+
     if (!apiKey) {
-      return NextResponse.json({ error: 'API key required' }, { status: 400 });
+      return NextResponse.json({ error: 'No Gemini API key configured' }, { status: 400 });
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -71,7 +74,8 @@ export async function POST(request: NextRequest) {
           "cost": "€XX",
           "tips": "טיפים",
           "crowdLevel": "רמת עומס",
-          "bestTimeToVisit": "שעה מומלצת"
+          "bestTimeToVisit": "שעה מומלצת",
+          "status": "suggested"
         }
       ],
       "meals": [
@@ -83,7 +87,8 @@ export async function POST(request: NextRequest) {
           "priceRange": "€XX-XX",
           "location": "מיקום",
           "rating": "X/5",
-          "source": "מקור ההמלצה"
+          "source": "מקור ההמלצה",
+          "status": "suggested"
         }
       ],
       "transit": {

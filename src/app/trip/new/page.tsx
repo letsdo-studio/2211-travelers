@@ -151,7 +151,7 @@ export default function NewTripPage() {
     const settings = getSettings();
     let itinerary;
 
-    if (settings.geminiApiKey && settings.aiProvider === 'gemini') {
+    if (settings.aiProvider !== 'demo') {
       try {
         const response = await fetch('/api/plan', {
           method: 'POST',

@@ -4,14 +4,16 @@ import { Trip } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, trip, apiKey } = await request.json() as {
+    const { message, trip, apiKey: clientKey } = await request.json() as {
       message: string;
       trip: Trip;
-      apiKey: string;
+      apiKey?: string;
     };
 
+    const apiKey = process.env.GEMINI_API_KEY || clientKey;
+
     if (!apiKey) {
-      return NextResponse.json({ error: 'API key required' }, { status: 400 });
+      return NextResponse.json({ error: 'No Gemini API key configured' }, { status: 400 });
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);

@@ -82,7 +82,7 @@ export default function ChatPanel({ trip, onClose }: ChatPanelProps) {
 
     let responseText: string;
 
-    if (settings.geminiApiKey && settings.aiProvider === 'gemini') {
+    if (settings.aiProvider !== 'demo') {
       try {
         const response = await fetch('/api/suggest', {
           method: 'POST',
