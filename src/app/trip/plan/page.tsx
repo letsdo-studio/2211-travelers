@@ -63,6 +63,15 @@ const ACTIVITY_FIELDS = [
   { key: 'tips', label: 'טיפים', type: 'textarea' as const },
   { key: 'crowdLevel', label: 'רמת עומס', type: 'text' as const },
   { key: 'bestTimeToVisit', label: 'זמן מומלץ לביקור', type: 'text' as const },
+  {
+    key: 'status', label: 'סטטוס', type: 'select' as const,
+    options: [
+      { value: 'suggested', label: 'הצעה' },
+      { value: 'confirmed', label: 'מאושר' },
+      { value: 'done', label: 'בוצע' },
+      { value: 'skipped', label: 'דילוג' },
+    ],
+  },
 ];
 
 const MEAL_FIELDS = [
@@ -82,6 +91,15 @@ const MEAL_FIELDS = [
   { key: 'location', label: 'מיקום', type: 'text' as const },
   { key: 'rating', label: 'דירוג', type: 'text' as const },
   { key: 'source', label: 'מקור ההמלצה', type: 'text' as const },
+  {
+    key: 'status', label: 'סטטוס', type: 'select' as const,
+    options: [
+      { value: 'suggested', label: 'הצעה' },
+      { value: 'confirmed', label: 'מאושר' },
+      { value: 'done', label: 'בוצע' },
+      { value: 'skipped', label: 'דילוג' },
+    ],
+  },
 ];
 
 const ACCOMMODATION_FIELDS = [
@@ -131,7 +149,7 @@ function ActivityCard({
           <p className="text-xs text-muted mt-0.5">{activity.description}</p>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
-          {/* Status quick actions */}
+          {/* Status quick actions - with undo support */}
           {status === 'suggested' && (
             <button
               onClick={() => onStatusChange('confirmed')}
@@ -142,12 +160,39 @@ function ActivityCard({
             </button>
           )}
           {status === 'confirmed' && (
+            <>
+              <button
+                onClick={() => onStatusChange('suggested')}
+                className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors"
+                title="בטל אישור"
+              >
+                <XIcon className="w-3.5 h-3.5 text-warning" />
+              </button>
+              <button
+                onClick={() => onStatusChange('done')}
+                className="p-1.5 rounded-lg hover:bg-success/10 transition-colors"
+                title="בוצע"
+              >
+                <CheckCircle className="w-4 h-4 text-success" />
+              </button>
+            </>
+          )}
+          {status === 'done' && (
             <button
-              onClick={() => onStatusChange('done')}
-              className="p-1.5 rounded-lg hover:bg-success/10 transition-colors"
-              title="בוצע"
+              onClick={() => onStatusChange('confirmed')}
+              className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors"
+              title="בטל ביצוע"
             >
-              <CheckCircle className="w-4 h-4 text-success" />
+              <XIcon className="w-3.5 h-3.5 text-warning" />
+            </button>
+          )}
+          {status === 'skipped' && (
+            <button
+              onClick={() => onStatusChange('suggested')}
+              className="p-1.5 rounded-lg hover:bg-primary/10 transition-colors"
+              title="החזר לרשימה"
+            >
+              <Plus className="w-3.5 h-3.5 text-primary" />
             </button>
           )}
           {(status === 'suggested' || status === 'confirmed') && (
@@ -251,7 +296,7 @@ function DayView({
       onUpdateDay({
         ...day,
         activities: day.activities.map((a) =>
-          a.id === editingActivity.id ? { ...a, ...data, priority: data.priority as Activity['priority'] } : a
+          a.id === editingActivity.id ? { ...a, ...data, priority: data.priority as Activity['priority'], status: (data.status as Activity['status']) || a.status } : a
         ),
       });
     }
@@ -431,6 +476,54 @@ function DayView({
                         className="p-1.5 rounded-lg hover:bg-success/10 transition-colors"
                       >
                         <Check className="w-3.5 h-3.5 text-success" />
+                      </button>
+                    )}
+                    {meal.status === 'confirmed' && (
+                      <button
+                        onClick={() => {
+                          onUpdateDay({
+                            ...day,
+                            meals: day.meals.map((m) =>
+                              m.id === meal.id ? { ...m, status: 'suggested' as const } : m
+                            ),
+                          });
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors"
+                        title="בטל אישור"
+                      >
+                        <XIcon className="w-3.5 h-3.5 text-warning" />
+                      </button>
+                    )}
+                    {meal.status === 'done' && (
+                      <button
+                        onClick={() => {
+                          onUpdateDay({
+                            ...day,
+                            meals: day.meals.map((m) =>
+                              m.id === meal.id ? { ...m, status: 'confirmed' as const } : m
+                            ),
+                          });
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors"
+                        title="בטל ביצוע"
+                      >
+                        <XIcon className="w-3.5 h-3.5 text-warning" />
+                      </button>
+                    )}
+                    {meal.status === 'skipped' && (
+                      <button
+                        onClick={() => {
+                          onUpdateDay({
+                            ...day,
+                            meals: day.meals.map((m) =>
+                              m.id === meal.id ? { ...m, status: 'suggested' as const } : m
+                            ),
+                          });
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-primary/10 transition-colors"
+                        title="החזר"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-primary" />
                       </button>
                     )}
                     <button
@@ -665,7 +758,24 @@ function TripPlanContent() {
         <RadiusExplorer
           hotelName={currentDay.accommodation?.name || trip.destination}
           activities={currentDay.activities}
-          onAddToDay={handleAddActivityFromRadius}
+          allDays={trip.itinerary}
+          currentDayIndex={activeDay}
+          onAddToDay={(activity, dayIndex) => {
+            const day = trip.itinerary[dayIndex];
+            const newActivity = { ...activity, id: `act-radius-${Date.now()}`, status: 'confirmed' as const };
+            handleUpdateDay(dayIndex, { ...day, activities: [...day.activities, newActivity] });
+          }}
+          onSkipActivity={(activityId) => {
+            const day = trip.itinerary[activeDay];
+            handleUpdateDay(activeDay, {
+              ...day,
+              activities: day.activities.map((a) =>
+                a.id === activityId
+                  ? { ...a, status: a.status === 'skipped' ? 'suggested' as const : 'skipped' as const }
+                  : a
+              ),
+            });
+          }}
           onClose={() => setShowRadius(false)}
         />
       )}
