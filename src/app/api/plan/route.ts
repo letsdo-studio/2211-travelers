@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { TravelerProfile } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
@@ -12,21 +12,13 @@ export async function POST(request: NextRequest) {
       apiKey?: string;
     };
 
-    // Server env var takes priority, then client-sent key
     const apiKey = process.env.GEMINI_API_KEY || clientKey;
 
     if (!apiKey) {
       return NextResponse.json({ error: 'No Gemini API key configured' }, { status: 400 });
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.7,
-      },
-    });
+    const ai = new GoogleGenAI({ apiKey });
 
     const prompt = `אתה מתכנן טיולים מקצועי. תכנן טיול מפורט ל-${destination} למשך ${numDays} ימים.
 מתחיל בתאריך: ${startDate}
@@ -50,7 +42,7 @@ export async function POST(request: NextRequest) {
 5. טיפים על רמת עומס תיירותי ושעות מומלצות לביקור
 6. הערות על נוף מיוחד בדרך, שקיעות, חוויות
 
-החזר JSON תקין בפורמט הבא (בלי markdown, רק JSON):
+החזר JSON תקין בלבד בפורמט הבא:
 {
   "itinerary": [
     {
@@ -73,7 +65,7 @@ export async function POST(request: NextRequest) {
           "id": "unique-id",
           "name": "שם",
           "description": "תיאור",
-          "priority": "must|should|if-time",
+          "priority": "must",
           "startTime": "HH:MM",
           "endTime": "HH:MM",
           "location": "מיקום",
@@ -87,7 +79,7 @@ export async function POST(request: NextRequest) {
       "meals": [
         {
           "id": "unique-id",
-          "type": "breakfast|lunch|dinner|coffee",
+          "type": "breakfast",
           "restaurant": "שם",
           "description": "תיאור",
           "priceRange": "€XX-XX",
@@ -97,36 +89,31 @@ export async function POST(request: NextRequest) {
           "status": "suggested"
         }
       ],
-      "transit": {
-        "from": "מוצא",
-        "to": "יעד",
-        "method": "אמצעי",
-        "departureTime": "HH:MM",
-        "arrivalTime": "HH:MM",
-        "duration": "XX דקות",
-        "cost": "€XX",
-        "scenicNotes": "הערות על נוף",
-        "tips": "טיפים"
-      },
+      "transit": null,
       "notes": "הערות ליום"
     }
   ]
 }`;
 
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    const text = response.text();
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        temperature: 0.7,
+      },
+    });
 
-    // Try to extract JSON from response - handle markdown code blocks too
+    const text = response.text || '';
+
+    // Parse JSON
     let jsonText = text.trim();
-    // Remove markdown code fences if present
     jsonText = jsonText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
-    // Find first { and last }
     const firstBrace = jsonText.indexOf('{');
     const lastBrace = jsonText.lastIndexOf('}');
     if (firstBrace === -1 || lastBrace === -1) {
       return NextResponse.json(
-        { error: `No JSON found in Gemini response. Raw: ${text.slice(0, 200)}` },
+        { error: `No JSON found in Gemini response. Raw: ${text.slice(0, 300)}` },
         { status: 500 }
       );
     }
@@ -138,7 +125,7 @@ export async function POST(request: NextRequest) {
     } catch (parseErr) {
       return NextResponse.json(
         {
-          error: `JSON parse error: ${parseErr instanceof Error ? parseErr.message : 'unknown'}. Raw: ${jsonText.slice(0, 200)}`,
+          error: `JSON parse error: ${parseErr instanceof Error ? parseErr.message : 'unknown'}. Raw: ${jsonText.slice(0, 300)}`,
         },
         { status: 500 }
       );

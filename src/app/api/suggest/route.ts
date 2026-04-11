@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { Trip } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
@@ -16,8 +16,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No Gemini API key configured' }, { status: 400 });
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const ai = new GoogleGenAI({ apiKey });
 
     const prompt = `אתה עוזר טיולים חכם ואישי. המטייל נמצא ב${trip.destination}.
 
@@ -38,11 +37,12 @@ export async function POST(request: NextRequest) {
 אם המטייל שואל על שינוי בתוכנית, הצע אפשרויות ושאל שאלות שיעזרו לו להחליט.
 ענה בקצרה וממוקד (עד 200 מילים).`;
 
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    const text = response.text();
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+    });
 
-    return NextResponse.json({ response: text });
+    return NextResponse.json({ response: response.text || '' });
   } catch (error) {
     console.error('Suggest API error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
