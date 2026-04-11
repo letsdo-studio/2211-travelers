@@ -1,18 +1,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { PlusCircle, MapPin, Calendar, ChevronLeft, Sparkles, Plane } from 'lucide-react';
+import { PlusCircle, MapPin, Calendar, ChevronLeft, Sparkles, Plane, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
-import { getTrips } from '@/lib/storage';
+import { getTrips, getSettings } from '@/lib/storage';
 import { Trip } from '@/lib/types';
 
 export default function HomePage() {
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
   useEffect(() => {
     setTrips(getTrips());
+    const settings = getSettings();
+    setIsDemoMode(settings.aiProvider === 'demo');
   }, []);
 
   return (
@@ -42,6 +45,26 @@ export default function HomePage() {
           </Link>
         </div>
       </div>
+
+      {/* Demo mode warning */}
+      {isDemoMode && (
+        <div className="px-4 pt-4 max-w-lg mx-auto">
+          <Link
+            href="/settings"
+            className="block bg-warning/10 border border-warning/30 rounded-2xl p-3 animate-fade-in"
+          >
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-warning">המערכת במצב דמו</p>
+                <p className="text-xs text-muted mt-0.5">
+                  לחץ כאן כדי להפעיל את Gemini ולקבל המלצות אמיתיות
+                </p>
+              </div>
+            </div>
+          </Link>
+        </div>
+      )}
 
       {/* Features */}
       <div className="px-4 py-6 max-w-lg mx-auto">

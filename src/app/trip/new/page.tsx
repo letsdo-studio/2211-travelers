@@ -150,6 +150,7 @@ export default function NewTripPage() {
 
     const settings = getSettings();
     let itinerary;
+    let source: 'gemini' | 'demo' = 'demo';
 
     if (settings.aiProvider !== 'demo') {
       try {
@@ -158,12 +159,17 @@ export default function NewTripPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ profile, destination: form.destination, startDate: form.startDate, numDays, apiKey: settings.geminiApiKey }),
         });
-        if (!response.ok) throw new Error('API error');
         const data = await response.json();
+        if (!response.ok) {
+          alert(`שגיאת Gemini: ${data.error || 'לא ידוע'}\nנסו לבדוק שה-API key תקין בהגדרות או ב-Vercel`);
+          throw new Error(data.error || 'API error');
+        }
         if (!data.itinerary || !Array.isArray(data.itinerary) || data.itinerary.length === 0) {
+          alert('Gemini החזיר תשובה לא תקינה. עוברים לדמו.');
           throw new Error('Invalid itinerary');
         }
         itinerary = data.itinerary;
+        source = 'gemini';
       } catch (err) {
         console.error('Gemini plan error:', err);
         itinerary = generateDemoItinerary(form.destination, form.startDate, numDays);
@@ -171,6 +177,7 @@ export default function NewTripPage() {
     } else {
       itinerary = generateDemoItinerary(form.destination, form.startDate, numDays);
     }
+    console.log('Trip generated from:', source);
 
     const trip: Trip = {
       id: tripId,

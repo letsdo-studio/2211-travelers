@@ -58,13 +58,16 @@ export interface AppSettings {
 }
 
 export function getSettings(): AppSettings {
-  if (typeof window === 'undefined') {
-    return { geminiApiKey: '', openaiApiKey: '', language: 'he', aiProvider: 'gemini' };
-  }
+  const defaults: AppSettings = { geminiApiKey: '', openaiApiKey: '', language: 'he', aiProvider: 'gemini' };
+  if (typeof window === 'undefined') return defaults;
   const data = localStorage.getItem(SETTINGS_KEY);
-  return data
-    ? JSON.parse(data)
-    : { geminiApiKey: '', openaiApiKey: '', language: 'he', aiProvider: 'gemini' };
+  if (!data) return defaults;
+  try {
+    const parsed = JSON.parse(data) as AppSettings;
+    return { ...defaults, ...parsed };
+  } catch {
+    return defaults;
+  }
 }
 
 export function saveSettings(settings: AppSettings): void {
