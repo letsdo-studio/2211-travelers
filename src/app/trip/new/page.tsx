@@ -15,9 +15,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import Header from '@/components/Header';
-import { saveTrip, saveProfile, getSettings } from '@/lib/storage';
+import { saveTrip, saveProfile } from '@/lib/storage';
 import { TravelerProfile, Trip } from '@/lib/types';
-import { generateDemoItinerary } from '@/lib/demo-data';
 
 const INTERESTS = [
   { id: 'history', label: 'היסטוריה', icon: '🏛️' },
@@ -144,41 +143,7 @@ export default function NewTripPage() {
 
     saveProfile(profile);
 
-    const start = new Date(form.startDate);
-    const end = new Date(form.endDate);
-    const numDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-
-    const settings = getSettings();
-    let itinerary;
-    let source: 'gemini' | 'demo' = 'demo';
-
-    if (settings.aiProvider !== 'demo') {
-      try {
-        const response = await fetch('/api/plan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profile, destination: form.destination, startDate: form.startDate, numDays, apiKey: settings.geminiApiKey }),
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          alert(`שגיאת Gemini: ${data.error || 'לא ידוע'}\nנסו לבדוק שה-API key תקין בהגדרות או ב-Vercel`);
-          throw new Error(data.error || 'API error');
-        }
-        if (!data.itinerary || !Array.isArray(data.itinerary) || data.itinerary.length === 0) {
-          alert('Gemini החזיר תשובה לא תקינה. עוברים לדמו.');
-          throw new Error('Invalid itinerary');
-        }
-        itinerary = data.itinerary;
-        source = 'gemini';
-      } catch (err) {
-        console.error('Gemini plan error:', err);
-        itinerary = generateDemoItinerary(form.destination, form.startDate, numDays);
-      }
-    } else {
-      itinerary = generateDemoItinerary(form.destination, form.startDate, numDays);
-    }
-    console.log('Trip generated from:', source);
-
+    // Create trip in 'generating' state immediately and navigate
     const trip: Trip = {
       id: tripId,
       name: form.tripName || `טיול ל${form.destination}`,
@@ -186,8 +151,8 @@ export default function NewTripPage() {
       startDate: form.startDate,
       endDate: form.endDate,
       profileId,
-      status: 'planning',
-      itinerary,
+      status: 'generating',
+      itinerary: [],
       bookings: [],
       createdAt: new Date().toISOString(),
     };

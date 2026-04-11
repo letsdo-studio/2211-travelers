@@ -12,6 +12,11 @@ export function getProfiles(): TravelerProfile[] {
   return data ? JSON.parse(data) : [];
 }
 
+export function getProfile(id: string): TravelerProfile | null {
+  const profiles = getProfiles();
+  return profiles.find(p => p.id === id) || null;
+}
+
 export function saveProfile(profile: TravelerProfile): void {
   const profiles = getProfiles();
   const idx = profiles.findIndex(p => p.id === profile.id);

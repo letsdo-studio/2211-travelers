@@ -6,6 +6,7 @@ import {
   MapPin, Clock, Star, ChevronDown, ChevronUp, Train, Utensils,
   Hotel, MessageCircle, Lightbulb, Eye, Users, Sparkles, Edit3,
   Navigation, Ticket, CheckCircle, Plus, Check, X as XIcon, SkipForward,
+  CalendarClock, Loader2, AlertCircle,
 } from 'lucide-react';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
@@ -13,7 +14,8 @@ import ChatPanel from '@/components/ChatPanel';
 import EditModal from '@/components/EditModal';
 import BookingPanel from '@/components/BookingPanel';
 import RadiusExplorer from '@/components/RadiusExplorer';
-import { getTrip, saveTrip } from '@/lib/storage';
+import { getTrip, saveTrip, getProfile, getSettings } from '@/lib/storage';
+import { generateItineraryForTrip } from '@/lib/trip-generator';
 import { Trip, DayPlan, Activity, Meal, Booking } from '@/lib/types';
 
 function PriorityBadge({ priority }: { priority: Activity['priority'] }) {
@@ -247,6 +249,87 @@ function ActivityCard({
   );
 }
 
+function MealCard({
+  meal,
+  onEdit,
+  onStatusChange,
+}: {
+  meal: Meal;
+  onEdit: () => void;
+  onStatusChange: (status: Meal['status']) => void;
+}) {
+  const status = meal.status || 'suggested';
+  return (
+    <div className={`bg-card rounded-2xl p-3 border border-card-border ${status === 'done' ? 'opacity-60' : ''} ${status === 'skipped' ? 'opacity-40' : ''}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className="text-sm">
+              {meal.type === 'breakfast' ? '🥐' : meal.type === 'lunch' ? '🥙' : meal.type === 'dinner' ? '🍝' : '☕'}
+            </span>
+            <span className="font-bold text-xs">
+              {meal.type === 'breakfast' ? 'בוקר' : meal.type === 'lunch' ? 'צהריים' : meal.type === 'dinner' ? 'ערב' : 'קפה'}
+            </span>
+            <span className="text-[10px] text-muted">{meal.priceRange}</span>
+            {status && <StatusBadge status={status} />}
+          </div>
+          <h4 className="text-sm font-medium">{meal.restaurant}</h4>
+          <p className="text-xs text-muted">{meal.description}</p>
+          <div className="flex items-center gap-2 mt-1 text-[10px] text-muted">
+            <span>⭐ {meal.rating}</span>
+            <span>· {meal.source}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-0.5 shrink-0">
+          {(status === 'suggested') && (
+            <button onClick={() => onStatusChange('confirmed')} className="p-1.5 rounded-lg hover:bg-success/10 transition-colors" title="אשר">
+              <Check className="w-3.5 h-3.5 text-success" />
+            </button>
+          )}
+          {status === 'confirmed' && (
+            <>
+              <button onClick={() => onStatusChange('suggested')} className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors" title="החזר להצעה">
+                <XIcon className="w-3.5 h-3.5 text-warning" />
+              </button>
+              <button onClick={() => onStatusChange('done')} className="p-1.5 rounded-lg hover:bg-success/10 transition-colors" title="בוצע">
+                <CheckCircle className="w-3.5 h-3.5 text-success" />
+              </button>
+            </>
+          )}
+          {status === 'done' && (
+            <button onClick={() => onStatusChange('confirmed')} className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors" title="בטל ביצוע">
+              <XIcon className="w-3.5 h-3.5 text-warning" />
+            </button>
+          )}
+          {status === 'skipped' && (
+            <button onClick={() => onStatusChange('suggested')} className="p-1.5 rounded-lg hover:bg-primary/10 transition-colors" title="החזר">
+              <Plus className="w-3.5 h-3.5 text-primary" />
+            </button>
+          )}
+          <button onClick={onEdit} className="p-1.5 rounded-lg hover:bg-primary/10 transition-colors">
+            <Edit3 className="w-3.5 h-3.5 text-muted" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Convert meal type to numeric time for sorting
+function mealToTime(type: Meal['type']): string {
+  return ({
+    breakfast: '08:00',
+    coffee: '10:30',
+    lunch: '13:00',
+    snack: '16:00',
+    dinner: '19:30',
+  } as Record<Meal['type'], string>)[type] || '12:00';
+}
+
+type ScheduleItem =
+  | { kind: 'activity'; time: string; data: Activity }
+  | { kind: 'meal'; time: string; data: Meal };
+
 function DayView({
   day,
   onUpdateDay,
@@ -254,17 +337,28 @@ function DayView({
   day: DayPlan;
   onUpdateDay: (updated: DayPlan) => void;
 }) {
-  const [showMeals, setShowMeals] = useState(false);
   const [showAccommodation, setShowAccommodation] = useState(false);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
   const [editingAccommodation, setEditingAccommodation] = useState(false);
   const [isAddingActivity, setIsAddingActivity] = useState(false);
 
+  // Schedule = confirmed/done activities + meals, sorted by time
+  const scheduleItems: ScheduleItem[] = [
+    ...day.activities
+      .filter((a) => a.status === 'confirmed' || a.status === 'done')
+      .map((a) => ({ kind: 'activity' as const, time: a.startTime, data: a })),
+    ...day.meals
+      .filter((m) => m.status === 'confirmed' || m.status === 'done')
+      .map((m) => ({ kind: 'meal' as const, time: mealToTime(m.type), data: m })),
+  ].sort((a, b) => a.time.localeCompare(b.time));
+
+  // Recommendations = suggested activities + meals, by priority
   const priorityOrder = { must: 0, should: 1, 'if-time': 2 };
-  const sortedActivities = [...day.activities].sort(
-    (a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]
-  );
+  const suggestedActivities = day.activities
+    .filter((a) => a.status === 'suggested' || !a.status)
+    .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+  const suggestedMeals = day.meals.filter((m) => m.status === 'suggested' || !m.status);
 
   const handleActivityStatusChange = (activityId: string, status: Activity['status']) => {
     onUpdateDay({
@@ -353,12 +447,6 @@ function DayView({
               <Hotel className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setShowMeals(!showMeals)}
-              className={`p-2 rounded-xl transition-colors ${showMeals ? 'bg-primary/10 text-primary' : 'text-muted hover:bg-card'}`}
-            >
-              <Utensils className="w-4 h-4" />
-            </button>
-            <button
               onClick={() => {
                 setIsAddingActivity(true);
                 setEditingActivity({
@@ -419,122 +507,93 @@ function DayView({
           </div>
         )}
 
-        {/* Activities */}
+        {/* Schedule (confirmed) */}
         <div className="space-y-2">
-          {sortedActivities.map((activity) => (
-            <ActivityCard
-              key={activity.id}
-              activity={activity}
-              onEdit={() => {
-                setIsAddingActivity(false);
-                setEditingActivity(activity);
-              }}
-              onStatusChange={(status) => handleActivityStatusChange(activity.id, status)}
-            />
-          ))}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CalendarClock className="w-4 h-4 text-success" />
+              <span className="font-bold text-sm">לוח זמנים יומי</span>
+              <span className="text-[10px] bg-success/10 text-success px-2 py-0.5 rounded-full">
+                {scheduleItems.length} פריטים
+              </span>
+            </div>
+          </div>
+          {scheduleItems.length === 0 ? (
+            <div className="bg-card rounded-2xl p-4 border border-card-border border-dashed text-center">
+              <p className="text-xs text-muted">
+                אין פריטים בלוח עדיין. אשר המלצות מהרשימה למטה כדי להוסיף ליום.
+              </p>
+            </div>
+          ) : (
+            scheduleItems.map((item, idx) => (
+              <div key={`${item.kind}-${item.data.id}-${idx}`} className="relative">
+                {/* Timeline indicator */}
+                <div className="absolute right-0 top-3 w-1 h-1 bg-success rounded-full" />
+                <div className="text-[10px] text-success font-mono mb-0.5 pr-3">
+                  {item.kind === 'activity'
+                    ? `${(item.data as Activity).startTime} - ${(item.data as Activity).endTime}`
+                    : item.time}
+                </div>
+                {item.kind === 'activity' ? (
+                  <ActivityCard
+                    activity={item.data as Activity}
+                    onEdit={() => {
+                      setIsAddingActivity(false);
+                      setEditingActivity(item.data as Activity);
+                    }}
+                    onStatusChange={(status) => handleActivityStatusChange((item.data as Activity).id, status)}
+                  />
+                ) : (
+                  <MealCard
+                    meal={item.data as Meal}
+                    onEdit={() => setEditingMeal(item.data as Meal)}
+                    onStatusChange={(status) => {
+                      const m = item.data as Meal;
+                      onUpdateDay({
+                        ...day,
+                        meals: day.meals.map((x) => x.id === m.id ? { ...x, status } : x),
+                      });
+                    }}
+                  />
+                )}
+              </div>
+            ))
+          )}
         </div>
 
-        {/* Meals */}
-        {showMeals && (
-          <div className="space-y-2 animate-fade-in">
-            <div className="flex items-center gap-2 mt-2">
-              <Utensils className="w-4 h-4 text-accent" />
-              <span className="font-bold text-sm">ארוחות</span>
+        {/* Recommendations */}
+        {(suggestedActivities.length > 0 || suggestedMeals.length > 0) && (
+          <div className="space-y-2 mt-6">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" />
+              <span className="font-bold text-sm">המלצות AI</span>
+              <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                {suggestedActivities.length + suggestedMeals.length} הצעות
+              </span>
             </div>
-            {day.meals.map((meal) => (
-              <div key={meal.id} className="bg-card rounded-2xl p-3 border border-card-border">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm">
-                        {meal.type === 'breakfast' ? '🥐' : meal.type === 'lunch' ? '🥙' : meal.type === 'dinner' ? '🍝' : '☕'}
-                      </span>
-                      <span className="font-bold text-xs">
-                        {meal.type === 'breakfast' ? 'בוקר' : meal.type === 'lunch' ? 'צהריים' : meal.type === 'dinner' ? 'ערב' : 'קפה'}
-                      </span>
-                      <span className="text-[10px] text-muted">{meal.priceRange}</span>
-                      {meal.status && <StatusBadge status={meal.status} />}
-                    </div>
-                    <h4 className="text-sm font-medium">{meal.restaurant}</h4>
-                    <p className="text-xs text-muted">{meal.description}</p>
-                    <div className="flex items-center gap-2 mt-1 text-[10px] text-muted">
-                      <span>⭐ {meal.rating}</span>
-                      <span>· {meal.source}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    {(!meal.status || meal.status === 'suggested') && (
-                      <button
-                        onClick={() => {
-                          onUpdateDay({
-                            ...day,
-                            meals: day.meals.map((m) =>
-                              m.id === meal.id ? { ...m, status: 'confirmed' as const } : m
-                            ),
-                          });
-                        }}
-                        className="p-1.5 rounded-lg hover:bg-success/10 transition-colors"
-                      >
-                        <Check className="w-3.5 h-3.5 text-success" />
-                      </button>
-                    )}
-                    {meal.status === 'confirmed' && (
-                      <button
-                        onClick={() => {
-                          onUpdateDay({
-                            ...day,
-                            meals: day.meals.map((m) =>
-                              m.id === meal.id ? { ...m, status: 'suggested' as const } : m
-                            ),
-                          });
-                        }}
-                        className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors"
-                        title="בטל אישור"
-                      >
-                        <XIcon className="w-3.5 h-3.5 text-warning" />
-                      </button>
-                    )}
-                    {meal.status === 'done' && (
-                      <button
-                        onClick={() => {
-                          onUpdateDay({
-                            ...day,
-                            meals: day.meals.map((m) =>
-                              m.id === meal.id ? { ...m, status: 'confirmed' as const } : m
-                            ),
-                          });
-                        }}
-                        className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors"
-                        title="בטל ביצוע"
-                      >
-                        <XIcon className="w-3.5 h-3.5 text-warning" />
-                      </button>
-                    )}
-                    {meal.status === 'skipped' && (
-                      <button
-                        onClick={() => {
-                          onUpdateDay({
-                            ...day,
-                            meals: day.meals.map((m) =>
-                              m.id === meal.id ? { ...m, status: 'suggested' as const } : m
-                            ),
-                          });
-                        }}
-                        className="p-1.5 rounded-lg hover:bg-primary/10 transition-colors"
-                        title="החזר"
-                      >
-                        <Plus className="w-3.5 h-3.5 text-primary" />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setEditingMeal(meal)}
-                      className="p-1.5 rounded-lg hover:bg-primary/10 transition-colors"
-                    >
-                      <Edit3 className="w-3.5 h-3.5 text-muted" />
-                    </button>
-                  </div>
-                </div>
-              </div>
+            {suggestedActivities.map((activity) => (
+              <ActivityCard
+                key={activity.id}
+                activity={activity}
+                onEdit={() => {
+                  setIsAddingActivity(false);
+                  setEditingActivity(activity);
+                }}
+                onStatusChange={(status) => handleActivityStatusChange(activity.id, status)}
+              />
+            ))}
+            {suggestedMeals.map((meal) => (
+              <MealCard
+                key={meal.id}
+                meal={meal}
+                onEdit={() => setEditingMeal(meal)}
+                onStatusChange={(status) => {
+                  onUpdateDay({
+                    ...day,
+                    meals: day.meals.map((x) => x.id === meal.id ? { ...x, status } : x),
+                  });
+                }}
+              />
             ))}
           </div>
         )}
@@ -598,14 +657,13 @@ function TripPlanContent() {
   const [showChat, setShowChat] = useState(false);
   const [showBookings, setShowBookings] = useState(false);
   const [showRadius, setShowRadius] = useState(false);
+  const [generationStarted, setGenerationStarted] = useState(false);
 
   useEffect(() => {
     if (tripId) {
       const loaded = getTrip(tripId);
       if (loaded) {
-        // Ensure bookings array exists (backward compat)
         if (!loaded.bookings) loaded.bookings = [];
-        // Ensure activity status exists
         loaded.itinerary.forEach((day) => {
           day.activities.forEach((a) => {
             if (!a.status) a.status = 'suggested';
@@ -618,6 +676,38 @@ function TripPlanContent() {
       }
     }
   }, [tripId]);
+
+  // Auto-generate itinerary if trip is in 'generating' state
+  useEffect(() => {
+    if (!trip || trip.status !== 'generating' || generationStarted) return;
+    setGenerationStarted(true);
+
+    (async () => {
+      const profile = getProfile(trip.profileId);
+      if (!profile) {
+        const errorTrip = { ...trip, status: 'planning' as const, generationError: 'לא נמצא פרופיל' };
+        setTrip(errorTrip);
+        saveTrip(errorTrip);
+        return;
+      }
+
+      const settings = getSettings();
+      const result = await generateItineraryForTrip(trip, profile, settings.geminiApiKey, settings.aiProvider === 'demo');
+
+      const updatedTrip: Trip = {
+        ...trip,
+        status: 'planning',
+        itinerary: result.itinerary,
+        generationError: result.error,
+      };
+      setTrip(updatedTrip);
+      saveTrip(updatedTrip);
+
+      if (result.error) {
+        console.error('Generation error:', result.error);
+      }
+    })();
+  }, [trip, generationStarted]);
 
   const updateTrip = (updated: Trip) => {
     setTrip(updated);
@@ -655,6 +745,50 @@ function TripPlanContent() {
     );
   }
 
+  // Generating state - show loading screen
+  if (trip.status === 'generating') {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header title={trip.name} showBack />
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="text-center max-w-sm animate-fade-in">
+            <div className="relative w-24 h-24 mx-auto mb-6">
+              <div className="absolute inset-0 gradient-primary rounded-full animate-pulse opacity-30" />
+              <div className="absolute inset-2 gradient-primary rounded-full animate-pulse opacity-50" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Sparkles className="w-10 h-10 text-white animate-pulse" />
+              </div>
+            </div>
+            <h2 className="text-xl font-bold mb-2">Gemini בונה את הטיול שלכם</h2>
+            <p className="text-sm text-muted mb-6">
+              מחפש את הפעילויות הטובות ביותר ב{trip.destination},
+              ומתכנן לוח זמנים מותאם אישית...
+            </p>
+            <div className="space-y-2">
+              {[
+                { icon: '🗺️', text: 'מנתח את היעד' },
+                { icon: '🏨', text: 'מחפש לינה מתאימה' },
+                { icon: '🎯', text: 'מתאים פעילויות לסגנון שלכם' },
+                { icon: '🍕', text: 'בודק המלצות אוכל' },
+                { icon: '🚂', text: 'מתכנן העברות' },
+              ].map((item, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 bg-card border border-card-border rounded-xl p-3 animate-fade-in"
+                  style={{ animationDelay: `${i * 0.2}s` }}
+                >
+                  <span className="text-xl">{item.icon}</span>
+                  <span className="text-sm flex-1 text-right">{item.text}</span>
+                  <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const currentDay = trip.itinerary[activeDay];
 
   return (
@@ -672,6 +806,19 @@ function TripPlanContent() {
           <div>{trip.itinerary.length} ימים</div>
         </div>
       </div>
+
+      {/* Generation error banner */}
+      {trip.generationError && (
+        <div className="bg-warning/10 border-b border-warning/30 px-4 py-2">
+          <div className="max-w-lg mx-auto flex items-start gap-2 text-xs">
+            <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-bold text-warning">תכנון AI נכשל - הוצגו נתוני דמו</p>
+              <p className="text-muted">{trip.generationError}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Action bar */}
       <div className="bg-card border-b border-card-border px-4 py-2">
@@ -754,31 +901,60 @@ function TripPlanContent() {
           onClose={() => setShowBookings(false)}
         />
       )}
-      {showRadius && currentDay && (
-        <RadiusExplorer
-          hotelName={currentDay.accommodation?.name || trip.destination}
-          activities={currentDay.activities}
-          allDays={trip.itinerary}
-          currentDayIndex={activeDay}
-          onAddToDay={(activity, dayIndex) => {
-            const day = trip.itinerary[dayIndex];
-            const newActivity = { ...activity, id: `act-radius-${Date.now()}`, status: 'confirmed' as const };
-            handleUpdateDay(dayIndex, { ...day, activities: [...day.activities, newActivity] });
-          }}
-          onSkipActivity={(activityId) => {
-            const day = trip.itinerary[activeDay];
-            handleUpdateDay(activeDay, {
-              ...day,
-              activities: day.activities.map((a) =>
-                a.id === activityId
-                  ? { ...a, status: a.status === 'skipped' ? 'suggested' as const : 'skipped' as const }
-                  : a
-              ),
-            });
-          }}
-          onClose={() => setShowRadius(false)}
-        />
-      )}
+      {showRadius && currentDay && (() => {
+        // Pool activities from all days at the same location (to dedupe by name)
+        const sameLocationDays = trip.itinerary.filter((d) => d.location === currentDay.location);
+        const seenNames = new Set<string>();
+        const pooledActivities: Activity[] = [];
+        sameLocationDays.forEach((d) => {
+          d.activities.forEach((a) => {
+            if (!seenNames.has(a.name)) {
+              seenNames.add(a.name);
+              pooledActivities.push(a);
+            }
+          });
+        });
+
+        return (
+          <RadiusExplorer
+            hotelName={currentDay.accommodation?.name || trip.destination}
+            activities={pooledActivities}
+            allDays={trip.itinerary}
+            currentDayIndex={activeDay}
+            onAddToDay={(activity, dayIndex) => {
+              const day = trip.itinerary[dayIndex];
+              // If activity already exists (suggested), just confirm it
+              const existing = day.activities.find((a) => a.name === activity.name);
+              if (existing) {
+                handleUpdateDay(dayIndex, {
+                  ...day,
+                  activities: day.activities.map((a) =>
+                    a.id === existing.id ? { ...a, status: 'confirmed' as const } : a
+                  ),
+                });
+              } else {
+                const newActivity = { ...activity, id: `act-radius-${Date.now()}`, status: 'confirmed' as const };
+                handleUpdateDay(dayIndex, { ...day, activities: [...day.activities, newActivity] });
+              }
+            }}
+            onSkipActivity={(activityId) => {
+              // Skip on all days where this activity exists
+              const activity = pooledActivities.find((a) => a.id === activityId);
+              if (!activity) return;
+              const newItinerary = trip.itinerary.map((d) => ({
+                ...d,
+                activities: d.activities.map((a) =>
+                  a.name === activity.name
+                    ? { ...a, status: a.status === 'skipped' ? 'suggested' as const : 'skipped' as const }
+                    : a
+                ),
+              }));
+              updateTrip({ ...trip, itinerary: newItinerary });
+            }}
+            onClose={() => setShowRadius(false)}
+          />
+        );
+      })()}
 
       <BottomNav />
     </div>

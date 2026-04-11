@@ -24,10 +24,11 @@ export interface Trip {
   startDate: string;
   endDate: string;
   profileId: string;
-  status: 'planning' | 'active' | 'completed';
+  status: 'planning' | 'active' | 'completed' | 'generating';
   itinerary: DayPlan[];
   bookings: Booking[];
   createdAt: string;
+  generationError?: string;
 }
 
 export interface DayPlan {
