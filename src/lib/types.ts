@@ -1,6 +1,6 @@
 export interface TravelerProfile {
   id: string;
-  names: string;
+  name: string;
   travelStyle: 'spontaneous' | 'planned' | 'mixed';
   budgetPerNight: { min: number; max: number; currency: string };
   accommodationLevel: 'budget' | 'mid' | 'premium' | 'luxury';
@@ -15,31 +15,66 @@ export interface TravelerProfile {
   pace: 'relaxed' | 'moderate' | 'intensive';
   wakeUpTime: string;
   specialNeeds: string;
+  importantThings: string;
+}
+
+export interface Destination {
+  id: string;
+  name: string;
+  country?: string;
+  startDate: string;
+  endDate: string;
+  description?: string;
+  highlights?: string[];
+}
+
+export interface TransportInfo {
+  type: 'flight' | 'train' | 'bus' | 'car' | 'ferry' | 'other';
+  number: string;
+  from: string;
+  to: string;
+  date: string;
+  time: string;
+  notes: string;
 }
 
 export interface Trip {
   id: string;
   name: string;
-  destination: string;
+  purpose: string;
+  customInstructions: string;
+  destinations: Destination[];
   startDate: string;
   endDate: string;
-  profileId: string;
+  travelers: TravelerProfile[];
+  arrival: TransportInfo | null;
+  departure: TransportInfo | null;
   status: 'planning' | 'active' | 'completed' | 'generating';
+  recommendationPool: RecommendationPool;
   itinerary: DayPlan[];
   bookings: Booking[];
   createdAt: string;
   generationError?: string;
 }
 
+export interface RecommendationPool {
+  attractions: Activity[];
+  meals: Meal[];
+  accommodations: Accommodation[];
+  transports: TransportRecommendation[];
+}
+
 export interface DayPlan {
   date: string;
   dayNumber: number;
   location: string;
-  accommodation: Accommodation | null;
-  activities: Activity[];
-  meals: Meal[];
-  transit: Transit | null;
+  destinationId?: string;
+  accommodationId: string | null;
+  activityIds: string[];
+  mealIds: string[];
+  transitId: string | null;
   notes: string;
+  aiInsights?: string;
 }
 
 export interface Activity {
@@ -49,12 +84,15 @@ export interface Activity {
   priority: 'must' | 'should' | 'if-time';
   startTime: string;
   endTime: string;
+  duration: string;
   location: string;
   cost: string;
   tips: string;
   crowdLevel: string;
   bestTimeToVisit: string;
   status: 'suggested' | 'confirmed' | 'done' | 'skipped';
+  destinationName?: string;
+  category?: string;
   distanceFromHotel?: string;
   transportMode?: string;
 }
@@ -69,9 +107,12 @@ export interface Meal {
   rating: string;
   source: string;
   status: 'suggested' | 'confirmed' | 'done' | 'skipped';
+  destinationName?: string;
+  cuisine?: string;
 }
 
 export interface Accommodation {
+  id: string;
   name: string;
   type: string;
   pricePerNight: string;
@@ -82,6 +123,23 @@ export interface Accommodation {
   bookingStatus: 'suggested' | 'booked' | 'skipped';
   confirmationNumber?: string;
   alternatives: string[];
+  destinationName?: string;
+  pros?: string[];
+  cons?: string[];
+}
+
+export interface TransportRecommendation {
+  id: string;
+  from: string;
+  to: string;
+  mode: string;
+  alternativeModes?: string[];
+  duration: string;
+  cost: string;
+  notes: string;
+  status: 'suggested' | 'confirmed' | 'skipped';
+  scenic?: boolean;
+  category: 'inter-city' | 'intra-city' | 'point-to-point';
 }
 
 export interface Transit {
@@ -110,14 +168,6 @@ export interface Booking {
   notes: string;
 }
 
-export interface RadiusZone {
-  label: string;
-  minKm: number;
-  maxKm: number;
-  transportModes: string[];
-  activities: Activity[];
-}
-
 export interface AISuggestion {
   id: string;
   type: 'activity' | 'restaurant' | 'accommodation' | 'transit' | 'general';
@@ -133,4 +183,11 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+}
+
+export interface Conflict {
+  type: 'time-overlap' | 'too-much' | 'tight-schedule';
+  message: string;
+  affectedIds: string[];
+  severity: 'warning' | 'error';
 }

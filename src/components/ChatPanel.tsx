@@ -21,7 +21,7 @@ const QUICK_QUESTIONS = [
 ];
 
 function generateDemoResponse(question: string, trip: Trip): string {
-  const dest = trip.destination;
+  const dest = trip.destinations?.[0]?.name || 'היעד';
   const suggestions = generateDemoSuggestions(dest);
 
   if (question.includes('ערב') || question.includes('לילה')) {
@@ -33,7 +33,7 @@ function generateDemoResponse(question: string, trip: Trip): string {
   }
 
   if (question.includes('להאריך') || question.includes('עוד יום')) {
-    return `🤔 שווה להאריך ב${dest}?\n\n**בעד:**\n- יש עוד אטרקציות שלא הספקתם\n- מחר צפוי מזג אוויר מעולה\n- מצאתי Airbnb ב-€75 ללילה עם ביקורות מעולות\n\n**נגד:**\n- היעד הבא (${trip.destination}) שווה זמן\n- חיסכון בלילה נוסף\n\n💡 *אם תחליטו להישאר, כדאי לנצל את הבוקר לשוק המקומי שפתוח רק ביום שלישי*`;
+    return `🤔 שווה להאריך ב${dest}?\n\n**בעד:**\n- יש עוד אטרקציות שלא הספקתם\n- מחר צפוי מזג אוויר מעולה\n- מצאתי Airbnb ב-€75 ללילה עם ביקורות מעולות\n\n**נגד:**\n- היעד הבא שווה זמן\n- חיסכון בלילה נוסף\n\n💡 *אם תחליטו להישאר, כדאי לנצל את הבוקר לשוק המקומי שפתוח רק ביום שלישי*`;
   }
 
   if (question.includes('מלון') || question.includes('לינה') || question.includes('חלופ')) {
@@ -48,11 +48,12 @@ function generateDemoResponse(question: string, trip: Trip): string {
 }
 
 export default function ChatPanel({ trip, onClose }: ChatPanelProps) {
+  const tripDest = trip.destinations?.[0]?.name || 'היעד';
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
       role: 'assistant',
-      content: `שלום! 👋 אני העוזר החכם שלכם לטיול ב**${trip.destination}**.\n\nאפשר לשאול אותי על:\n- 🍕 המלצות אוכל\n- 🏨 חלופות לינה\n- 🎯 פעילויות ואטרקציות\n- 🚂 העברות ותחבורה\n- 🔄 שינויים בתוכנית\n\nמה תרצו לדעת?`,
+      content: `שלום! 👋 אני העוזר החכם שלכם לטיול ב**${tripDest}**.\n\nאפשר לשאול אותי על:\n- 🍕 המלצות אוכל\n- 🏨 חלופות לינה\n- 🎯 פעילויות ואטרקציות\n- 🚂 העברות ותחבורה\n- 🔄 שינויים בתוכנית\n\nמה תרצו לדעת?`,
       timestamp: new Date().toISOString(),
     },
   ]);
@@ -124,7 +125,7 @@ export default function ChatPanel({ trip, onClose }: ChatPanelProps) {
           </div>
           <div>
             <h3 className="font-bold text-sm">עוזר הטיול</h3>
-            <p className="text-[10px] text-muted">{trip.destination}</p>
+            <p className="text-[10px] text-muted">{tripDest}</p>
           </div>
         </div>
         <button

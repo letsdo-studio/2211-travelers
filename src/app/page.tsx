@@ -126,7 +126,7 @@ export default function HomePage() {
                       <h3 className="font-bold mb-1">{trip.name}</h3>
                       <div className="flex items-center gap-2 text-sm text-muted mb-2">
                         <MapPin className="w-3.5 h-3.5" />
-                        <span>{trip.destination}</span>
+                        <span>{trip.destinations?.map((d) => d.name).join(' → ') || ''}</span>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted">
                         <Calendar className="w-3 h-3" />

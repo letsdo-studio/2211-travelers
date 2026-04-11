@@ -3,20 +3,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowLeft,
-  MapPin,
-  Calendar,
-  Users,
-  Wallet,
-  Utensils,
-  Compass,
-  Clock,
-  Sparkles,
-  Loader2,
+  ArrowLeft, MapPin, Calendar, Users, Wallet, Utensils, Compass,
+  Clock, Sparkles, Loader2, Plus, Trash2, Plane, Target, MessageSquare,
 } from 'lucide-react';
 import Header from '@/components/Header';
-import { saveTrip, saveProfile } from '@/lib/storage';
-import { TravelerProfile, Trip } from '@/lib/types';
+import { saveTrip } from '@/lib/storage';
+import { TravelerProfile, Trip, Destination, TransportInfo } from '@/lib/types';
+import { generateEmptyDays } from '@/lib/trip-generator';
 
 const INTERESTS = [
   { id: 'history', label: 'היסטוריה', icon: '🏛️' },
@@ -29,130 +22,148 @@ const INTERESTS = [
   { id: 'beach', label: 'חוף', icon: '🏖️' },
   { id: 'culture', label: 'תרבות', icon: '🎭' },
   { id: 'photography', label: 'צילום', icon: '📸' },
-  { id: 'wellness', label: 'ספא/רוגע', icon: '🧘' },
+  { id: 'wellness', label: 'ספא/יוגה', icon: '🧘' },
+  { id: 'sports', label: 'ספורט/כושר', icon: '💪' },
   { id: 'local', label: 'חוויה מקומית', icon: '🏘️' },
+  { id: 'markets', label: 'שווקים', icon: '🏪' },
 ];
-
-interface FormData {
-  // Trip info
-  destination: string;
-  startDate: string;
-  endDate: string;
-  tripName: string;
-  // Traveler profile
-  names: string;
-  travelStyle: 'spontaneous' | 'planned' | 'mixed';
-  budgetMin: number;
-  budgetMax: number;
-  accommodationLevel: 'budget' | 'mid' | 'premium' | 'luxury';
-  interests: string[];
-  pace: 'relaxed' | 'moderate' | 'intensive';
-  wakeUpTime: string;
-  // Food
-  breakfastStyle: string;
-  lunchStyle: string;
-  dinnerStyle: string;
-  coffeeStyle: string;
-  specialNeeds: string;
-}
 
 const STEPS = [
-  { id: 'destination', title: 'לאן טסים?', icon: MapPin },
-  { id: 'dates', title: 'מתי?', icon: Calendar },
-  { id: 'style', title: 'סגנון טיול', icon: Compass },
-  { id: 'budget', title: 'תקציב ולינה', icon: Wallet },
-  { id: 'food', title: 'העדפות אוכל', icon: Utensils },
-  { id: 'interests', title: 'תחומי עניין', icon: Users },
-  { id: 'pace', title: 'קצב ושעות', icon: Clock },
+  { id: 'brief', title: 'בריף ומטרה', icon: Target },
+  { id: 'destinations', title: 'יעדים', icon: MapPin },
+  { id: 'dates', title: 'תאריכים', icon: Calendar },
+  { id: 'travelers', title: 'מטיילים', icon: Users },
+  { id: 'transport', title: 'הגעה ועזיבה', icon: Plane },
+  { id: 'instructions', title: 'הנחיות', icon: MessageSquare },
 ];
+
+function emptyTraveler(idx: number): TravelerProfile {
+  return {
+    id: `trav-${Date.now()}-${idx}`,
+    name: '',
+    travelStyle: 'mixed',
+    budgetPerNight: { min: 50, max: 150, currency: 'EUR' },
+    accommodationLevel: 'mid',
+    foodPreferences: {
+      breakfast: 'בית קפה מקומי',
+      lunch: 'מסעדה קלילה',
+      dinner: 'מסעדה מקומית',
+      coffee: 'specialty coffee',
+      snacks: '',
+    },
+    interests: [],
+    pace: 'moderate',
+    wakeUpTime: '08:00',
+    specialNeeds: '',
+    importantThings: '',
+  };
+}
+
+function emptyDestination(idx: number): Destination {
+  return {
+    id: `dest-${Date.now()}-${idx}`,
+    name: '',
+    country: '',
+    startDate: '',
+    endDate: '',
+  };
+}
+
+function emptyTransport(): TransportInfo {
+  return {
+    type: 'flight',
+    number: '',
+    from: '',
+    to: '',
+    date: '',
+    time: '',
+    notes: '',
+  };
+}
 
 export default function NewTripPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState<FormData>({
-    destination: '',
-    startDate: '',
-    endDate: '',
-    tripName: '',
-    names: '',
-    travelStyle: 'spontaneous',
-    budgetMin: 50,
-    budgetMax: 150,
-    accommodationLevel: 'mid',
-    interests: [],
-    pace: 'moderate',
-    wakeUpTime: '08:00',
-    breakfastStyle: 'בית קפה מקומי',
-    lunchStyle: 'אוכל רחוב / מסעדה קלילה',
-    dinnerStyle: 'מסעדה מקומית טובה',
-    coffeeStyle: 'specialty coffee',
-    specialNeeds: '',
-  });
 
-  const updateForm = (updates: Partial<FormData>) => {
-    setForm((prev) => ({ ...prev, ...updates }));
+  const [tripName, setTripName] = useState('');
+  const [purpose, setPurpose] = useState('');
+  const [customInstructions, setCustomInstructions] = useState('');
+  const [destinations, setDestinations] = useState<Destination[]>([emptyDestination(0)]);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [travelers, setTravelers] = useState<TravelerProfile[]>([emptyTraveler(0)]);
+  const [arrival, setArrival] = useState<TransportInfo | null>(null);
+  const [departure, setDeparture] = useState<TransportInfo | null>(null);
+  const [editingTravelerIdx, setEditingTravelerIdx] = useState<number | null>(null);
+
+  const updateDestination = (idx: number, updates: Partial<Destination>) => {
+    setDestinations((prev) => prev.map((d, i) => i === idx ? { ...d, ...updates } : d));
   };
 
-  const toggleInterest = (id: string) => {
-    setForm((prev) => ({
-      ...prev,
-      interests: prev.interests.includes(id)
-        ? prev.interests.filter((i) => i !== id)
-        : [...prev.interests, id],
+  const updateTraveler = (idx: number, updates: Partial<TravelerProfile>) => {
+    setTravelers((prev) => prev.map((t, i) => i === idx ? { ...t, ...updates } : t));
+  };
+
+  const toggleInterest = (idx: number, id: string) => {
+    setTravelers((prev) => prev.map((t, i) => {
+      if (i !== idx) return t;
+      return {
+        ...t,
+        interests: t.interests.includes(id) ? t.interests.filter((x) => x !== id) : [...t.interests, id],
+      };
     }));
   };
 
   const canProceed = () => {
     switch (step) {
-      case 0: return form.destination.length > 0;
-      case 1: return form.startDate && form.endDate;
-      case 2: return true;
-      case 3: return true;
+      case 0: return purpose.length > 0 || tripName.length > 0;
+      case 1: return destinations.every((d) => d.name.length > 0);
+      case 2: return startDate && endDate;
+      case 3: return travelers.every((t) => t.name.length > 0 && t.interests.length > 0);
       case 4: return true;
-      case 5: return form.interests.length > 0;
-      case 6: return true;
+      case 5: return true;
       default: return true;
     }
   };
 
-  const handleSubmit = async () => {
-    setLoading(true);
-
-    const profileId = `profile-${Date.now()}`;
+  const handleSubmit = () => {
     const tripId = `trip-${Date.now()}`;
 
-    const profile: TravelerProfile = {
-      id: profileId,
-      names: form.names || 'מטייל',
-      travelStyle: form.travelStyle,
-      budgetPerNight: { min: form.budgetMin, max: form.budgetMax, currency: 'EUR' },
-      accommodationLevel: form.accommodationLevel,
-      foodPreferences: {
-        breakfast: form.breakfastStyle,
-        lunch: form.lunchStyle,
-        dinner: form.dinnerStyle,
-        coffee: form.coffeeStyle,
-        snacks: '',
-      },
-      interests: form.interests,
-      pace: form.pace,
-      wakeUpTime: form.wakeUpTime,
-      specialNeeds: form.specialNeeds,
-    };
+    // Auto-distribute destinations across dates if not specified
+    const destsWithDates = destinations.map((d, i) => {
+      if (d.startDate && d.endDate) return d;
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const daysPerDest = Math.ceil(totalDays / destinations.length);
+      const destStart = new Date(start);
+      destStart.setDate(destStart.getDate() + i * daysPerDest);
+      const destEnd = new Date(destStart);
+      destEnd.setDate(destEnd.getDate() + daysPerDest - 1);
+      if (destEnd > end) destEnd.setTime(end.getTime());
+      return {
+        ...d,
+        startDate: destStart.toISOString().split('T')[0],
+        endDate: destEnd.toISOString().split('T')[0],
+      };
+    });
 
-    saveProfile(profile);
+    const itinerary = generateEmptyDays(startDate, endDate, destsWithDates);
 
-    // Create trip in 'generating' state immediately and navigate
     const trip: Trip = {
       id: tripId,
-      name: form.tripName || `טיול ל${form.destination}`,
-      destination: form.destination,
-      startDate: form.startDate,
-      endDate: form.endDate,
-      profileId,
+      name: tripName || `טיול ל${destinations[0].name}`,
+      purpose,
+      customInstructions,
+      destinations: destsWithDates,
+      startDate,
+      endDate,
+      travelers,
+      arrival,
+      departure,
       status: 'generating',
-      itinerary: [],
+      recommendationPool: { attractions: [], meals: [], accommodations: [], transports: [] },
+      itinerary,
       bookings: [],
       createdAt: new Date().toISOString(),
     };
@@ -167,32 +178,31 @@ export default function NewTripPage() {
         return (
           <div className="animate-fade-in space-y-4">
             <div className="text-center mb-6">
-              <span className="text-4xl mb-3 block">✈️</span>
-              <h2 className="text-xl font-bold">לאן טסים?</h2>
-              <p className="text-sm text-muted mt-1">הכניסו יעד או כמה יעדים</p>
+              <span className="text-4xl mb-3 block">🎯</span>
+              <h2 className="text-xl font-bold">בריף הטיול</h2>
+              <p className="text-sm text-muted mt-1">מה המטרה? מה מיוחד בו?</p>
             </div>
-            <input
-              type="text"
-              placeholder="למשל: ברצלונה, יפן, איטליה..."
-              value={form.destination}
-              onChange={(e) => updateForm({ destination: e.target.value })}
-              className="w-full px-4 py-3.5 bg-card border border-card-border rounded-2xl text-base focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-              autoFocus
-            />
-            <input
-              type="text"
-              placeholder="שם לטיול (אופציונלי)"
-              value={form.tripName}
-              onChange={(e) => updateForm({ tripName: e.target.value })}
-              className="w-full px-4 py-3.5 bg-card border border-card-border rounded-2xl text-base focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-            />
-            <input
-              type="text"
-              placeholder="שמות המטיילים"
-              value={form.names}
-              onChange={(e) => updateForm({ names: e.target.value })}
-              className="w-full px-4 py-3.5 bg-card border border-card-border rounded-2xl text-base focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-            />
+            <div>
+              <label className="block text-sm font-medium mb-2">שם לטיול</label>
+              <input
+                type="text"
+                placeholder="טיול קסום באיטליה"
+                value={tripName}
+                onChange={(e) => setTripName(e.target.value)}
+                className="w-full px-4 py-3.5 bg-card border border-card-border rounded-2xl text-base focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">מטרת הטיול</label>
+              <textarea
+                placeholder="חופשה רומנטית, מסע גילוי, ירח דבש, חופשת משפחה..."
+                value={purpose}
+                onChange={(e) => setPurpose(e.target.value)}
+                rows={3}
+                className="w-full px-4 py-3 bg-card border border-card-border rounded-2xl text-base focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all resize-none"
+              />
+              <p className="text-xs text-muted mt-1">המטרה תעזור ל-AI להמליץ פעילויות מתאימות</p>
+            </div>
           </div>
         );
 
@@ -200,29 +210,46 @@ export default function NewTripPage() {
         return (
           <div className="animate-fade-in space-y-4">
             <div className="text-center mb-6">
-              <span className="text-4xl mb-3 block">📅</span>
-              <h2 className="text-xl font-bold">מתי נוסעים?</h2>
-              <p className="text-sm text-muted mt-1">גם אם לא בטוחים - אפשר לשנות אחר כך</p>
+              <span className="text-4xl mb-3 block">🗺️</span>
+              <h2 className="text-xl font-bold">יעדים</h2>
+              <p className="text-sm text-muted mt-1">אפשר להוסיף כמה יעדים</p>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">תאריך התחלה</label>
-              <input
-                type="date"
-                value={form.startDate}
-                onChange={(e) => updateForm({ startDate: e.target.value })}
-                className="w-full px-4 py-3.5 bg-card border border-card-border rounded-2xl text-base focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">תאריך סיום</label>
-              <input
-                type="date"
-                value={form.endDate}
-                onChange={(e) => updateForm({ endDate: e.target.value })}
-                min={form.startDate}
-                className="w-full px-4 py-3.5 bg-card border border-card-border rounded-2xl text-base focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-              />
-            </div>
+            {destinations.map((dest, idx) => (
+              <div key={dest.id} className="bg-card border border-card-border rounded-2xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold">יעד {idx + 1}</span>
+                  {destinations.length > 1 && (
+                    <button
+                      onClick={() => setDestinations((prev) => prev.filter((_, i) => i !== idx))}
+                      className="p-1 rounded-lg hover:bg-danger/10 text-danger"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  placeholder="עיר (לדוגמה: רומא)"
+                  value={dest.name}
+                  onChange={(e) => updateDestination(idx, { name: e.target.value })}
+                  className="w-full px-3 py-2.5 bg-background border border-card-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+                <input
+                  type="text"
+                  placeholder="מדינה (אופציונלי)"
+                  value={dest.country || ''}
+                  onChange={(e) => updateDestination(idx, { country: e.target.value })}
+                  className="w-full px-3 py-2.5 bg-background border border-card-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+              </div>
+            ))}
+            <button
+              onClick={() => setDestinations((prev) => [...prev, emptyDestination(prev.length)])}
+              className="w-full py-3 border-2 border-dashed border-primary/30 text-primary rounded-2xl text-sm font-medium hover:bg-primary/5 transition-colors active:scale-95 flex items-center justify-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              הוסף יעד נוסף
+            </button>
           </div>
         );
 
@@ -230,33 +257,28 @@ export default function NewTripPage() {
         return (
           <div className="animate-fade-in space-y-4">
             <div className="text-center mb-6">
-              <span className="text-4xl mb-3 block">🧭</span>
-              <h2 className="text-xl font-bold">סגנון הטיול</h2>
-              <p className="text-sm text-muted mt-1">איך אתם אוהבים לטייל?</p>
+              <span className="text-4xl mb-3 block">📅</span>
+              <h2 className="text-xl font-bold">מתי?</h2>
             </div>
-            {[
-              { value: 'spontaneous', label: 'ספונטני', desc: 'לא סוגרים מראש, הולכים עם הרגע', icon: '🎲' },
-              { value: 'mixed', label: 'משולב', desc: 'קווים מנחים עם מקום לספונטניות', icon: '⚖️' },
-              { value: 'planned', label: 'מתוכנן', desc: 'הכל סגור ומתואם מראש', icon: '📋' },
-            ].map((style) => (
-              <button
-                key={style.value}
-                onClick={() => updateForm({ travelStyle: style.value as FormData['travelStyle'] })}
-                className={`w-full text-right p-4 rounded-2xl border-2 transition-all active:scale-[0.98] ${
-                  form.travelStyle === style.value
-                    ? 'border-primary bg-primary/5'
-                    : 'border-card-border bg-card hover:border-primary/30'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">{style.icon}</span>
-                  <div>
-                    <div className="font-bold">{style.label}</div>
-                    <div className="text-sm text-muted">{style.desc}</div>
-                  </div>
-                </div>
-              </button>
-            ))}
+            <div>
+              <label className="block text-sm font-medium mb-2">תאריך התחלה</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full px-4 bg-card border border-card-border rounded-2xl text-base focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">תאריך סיום</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                min={startDate}
+                className="w-full px-4 bg-card border border-card-border rounded-2xl text-base focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
           </div>
         );
 
@@ -264,57 +286,98 @@ export default function NewTripPage() {
         return (
           <div className="animate-fade-in space-y-4">
             <div className="text-center mb-6">
-              <span className="text-4xl mb-3 block">💰</span>
-              <h2 className="text-xl font-bold">תקציב ולינה</h2>
+              <span className="text-4xl mb-3 block">👥</span>
+              <h2 className="text-xl font-bold">מטיילים</h2>
+              <p className="text-sm text-muted mt-1">לכל מטייל העדפות משלו</p>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                תקציב ללילה (€): {form.budgetMin} - {form.budgetMax}
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min="20"
-                  max="500"
-                  value={form.budgetMin}
-                  onChange={(e) => updateForm({ budgetMin: Number(e.target.value) })}
-                  className="flex-1 accent-primary"
-                />
-                <input
-                  type="range"
-                  min="20"
-                  max="500"
-                  value={form.budgetMax}
-                  onChange={(e) => updateForm({ budgetMax: Number(e.target.value) })}
-                  className="flex-1 accent-primary"
-                />
+            {travelers.map((t, idx) => (
+              <div key={t.id} className="bg-card border border-card-border rounded-2xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <input
+                    type="text"
+                    placeholder={`שם המטייל ${idx + 1}`}
+                    value={t.name}
+                    onChange={(e) => updateTraveler(idx, { name: e.target.value })}
+                    className="flex-1 px-3 py-2 bg-background border border-card-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                  {travelers.length > 1 && (
+                    <button
+                      onClick={() => setTravelers((prev) => prev.filter((_, i) => i !== idx))}
+                      className="p-2 rounded-lg hover:bg-danger/10 text-danger ml-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => setEditingTravelerIdx(editingTravelerIdx === idx ? null : idx)}
+                  className="w-full px-3 py-2 bg-primary/5 text-primary rounded-xl text-xs font-medium"
+                >
+                  {editingTravelerIdx === idx ? 'סגור' : t.interests.length > 0 ? `${t.interests.length} תחומי עניין נבחרו` : 'הגדר תחומי עניין והעדפות'}
+                </button>
+
+                {editingTravelerIdx === idx && (
+                  <div className="space-y-3 pt-2 animate-fade-in">
+                    <div>
+                      <label className="text-xs font-medium block mb-1">תחומי עניין:</label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {INTERESTS.map((interest) => (
+                          <button
+                            key={interest.id}
+                            onClick={() => toggleInterest(idx, interest.id)}
+                            className={`p-2 rounded-xl border transition-all text-center ${
+                              t.interests.includes(interest.id)
+                                ? 'border-primary bg-primary/5'
+                                : 'border-card-border'
+                            }`}
+                          >
+                            <span className="text-sm block">{interest.icon}</span>
+                            <span className="text-[10px] font-medium">{interest.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium block mb-1">מה חשוב למטייל הזה?</label>
+                      <textarea
+                        placeholder="לי חשוב יוגה בבוקר, חדר כושר במלון..."
+                        value={t.importantThings}
+                        onChange={(e) => updateTraveler(idx, { importantThings: e.target.value })}
+                        rows={2}
+                        className="w-full px-3 py-2 bg-background border border-card-border rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium block mb-1">קצב מועדף:</label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[
+                          { value: 'relaxed', label: 'רגוע 🐢' },
+                          { value: 'moderate', label: 'מאוזן 🚶' },
+                          { value: 'intensive', label: 'אינטנסיבי 🏃' },
+                        ].map((p) => (
+                          <button
+                            key={p.value}
+                            onClick={() => updateTraveler(idx, { pace: p.value as TravelerProfile['pace'] })}
+                            className={`p-2 rounded-xl border text-xs ${
+                              t.pace === p.value ? 'border-primary bg-primary/5' : 'border-card-border'
+                            }`}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-3">רמת לינה</label>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { value: 'budget', label: 'חסכוני', desc: 'הוסטל / Airbnb בסיסי', icon: '🏠' },
-                  { value: 'mid', label: 'בינוני', desc: 'מלון 3* / Airbnb טוב', icon: '🏨' },
-                  { value: 'premium', label: 'פרימיום', desc: 'מלון 4* / בוטיק', icon: '🏩' },
-                  { value: 'luxury', label: 'יוקרה', desc: 'מלון 5* / וילה', icon: '🏰' },
-                ].map((level) => (
-                  <button
-                    key={level.value}
-                    onClick={() => updateForm({ accommodationLevel: level.value as FormData['accommodationLevel'] })}
-                    className={`p-3 rounded-2xl border-2 transition-all text-center active:scale-[0.98] ${
-                      form.accommodationLevel === level.value
-                        ? 'border-primary bg-primary/5'
-                        : 'border-card-border bg-card'
-                    }`}
-                  >
-                    <span className="text-xl">{level.icon}</span>
-                    <div className="font-bold text-sm mt-1">{level.label}</div>
-                    <div className="text-[10px] text-muted">{level.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
+            ))}
+            <button
+              onClick={() => setTravelers((prev) => [...prev, emptyTraveler(prev.length)])}
+              className="w-full py-3 border-2 border-dashed border-primary/30 text-primary rounded-2xl text-sm font-medium active:scale-95 flex items-center justify-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              הוסף מטייל
+            </button>
           </div>
         );
 
@@ -322,39 +385,149 @@ export default function NewTripPage() {
         return (
           <div className="animate-fade-in space-y-4">
             <div className="text-center mb-6">
-              <span className="text-4xl mb-3 block">🍽️</span>
-              <h2 className="text-xl font-bold">העדפות אוכל</h2>
-              <p className="text-sm text-muted mt-1">מה אתם אוהבים בכל ארוחה?</p>
+              <span className="text-4xl mb-3 block">✈️</span>
+              <h2 className="text-xl font-bold">הגעה ועזיבה</h2>
+              <p className="text-sm text-muted mt-1">אופציונלי - יעזור לתכנון</p>
             </div>
-            {[
-              { key: 'breakfastStyle', label: 'ארוחת בוקר', placeholder: 'בית קפה מקומי, בופה במלון...', icon: '🥐' },
-              { key: 'lunchStyle', label: 'ארוחת צהריים', placeholder: 'אוכל רחוב, מסעדה...', icon: '🥙' },
-              { key: 'dinnerStyle', label: 'ארוחת ערב', placeholder: 'מסעדה מקומית, fine dining...', icon: '🍝' },
-              { key: 'coffeeStyle', label: 'קפה / חטיפים', placeholder: 'specialty coffee, מאפייה...', icon: '☕' },
-            ].map((meal) => (
-              <div key={meal.key}>
-                <label className="text-sm font-medium mb-1 flex items-center gap-2">
-                  <span>{meal.icon}</span>
-                  {meal.label}
-                </label>
-                <input
-                  type="text"
-                  placeholder={meal.placeholder}
-                  value={form[meal.key as keyof FormData] as string}
-                  onChange={(e) => updateForm({ [meal.key]: e.target.value })}
-                  className="w-full px-4 py-3 bg-card border border-card-border rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-                />
+
+            {/* Arrival */}
+            <div className="bg-card border border-card-border rounded-2xl p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-sm">🛬 הגעה</span>
+                {arrival ? (
+                  <button onClick={() => setArrival(null)} className="text-xs text-danger">הסר</button>
+                ) : (
+                  <button
+                    onClick={() => setArrival(emptyTransport())}
+                    className="text-xs text-primary font-medium"
+                  >
+                    הוסף
+                  </button>
+                )}
               </div>
-            ))}
-            <div>
-              <label className="text-sm font-medium mb-1 block">צרכים מיוחדים</label>
-              <input
-                type="text"
-                placeholder="צמחוני, ללא גלוטן, אלרגיות..."
-                value={form.specialNeeds}
-                onChange={(e) => updateForm({ specialNeeds: e.target.value })}
-                className="w-full px-4 py-3 bg-card border border-card-border rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-              />
+              {arrival && (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={arrival.type}
+                      onChange={(e) => setArrival({ ...arrival, type: e.target.value as TransportInfo['type'] })}
+                      className="px-3 py-2 bg-background border border-card-border rounded-xl text-xs"
+                    >
+                      <option value="flight">טיסה</option>
+                      <option value="train">רכבת</option>
+                      <option value="bus">אוטובוס</option>
+                      <option value="car">רכב</option>
+                      <option value="ferry">מעבורת</option>
+                      <option value="other">אחר</option>
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="מספר טיסה/רכבת"
+                      value={arrival.number}
+                      onChange={(e) => setArrival({ ...arrival, number: e.target.value })}
+                      className="px-3 py-2 bg-background border border-card-border rounded-xl text-xs"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="מאיפה (תל אביב)"
+                    value={arrival.from}
+                    onChange={(e) => setArrival({ ...arrival, from: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-card-border rounded-xl text-xs"
+                  />
+                  <input
+                    type="text"
+                    placeholder="לאן (רומא נמל תעופה)"
+                    value={arrival.to}
+                    onChange={(e) => setArrival({ ...arrival, to: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-card-border rounded-xl text-xs"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="date"
+                      value={arrival.date}
+                      onChange={(e) => setArrival({ ...arrival, date: e.target.value })}
+                      className="px-3 bg-background border border-card-border rounded-xl text-xs"
+                    />
+                    <input
+                      type="time"
+                      value={arrival.time}
+                      onChange={(e) => setArrival({ ...arrival, time: e.target.value })}
+                      className="px-3 bg-background border border-card-border rounded-xl text-xs"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Departure */}
+            <div className="bg-card border border-card-border rounded-2xl p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-sm">🛫 עזיבה</span>
+                {departure ? (
+                  <button onClick={() => setDeparture(null)} className="text-xs text-danger">הסר</button>
+                ) : (
+                  <button
+                    onClick={() => setDeparture(emptyTransport())}
+                    className="text-xs text-primary font-medium"
+                  >
+                    הוסף
+                  </button>
+                )}
+              </div>
+              {departure && (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={departure.type}
+                      onChange={(e) => setDeparture({ ...departure, type: e.target.value as TransportInfo['type'] })}
+                      className="px-3 py-2 bg-background border border-card-border rounded-xl text-xs"
+                    >
+                      <option value="flight">טיסה</option>
+                      <option value="train">רכבת</option>
+                      <option value="bus">אוטובוס</option>
+                      <option value="car">רכב</option>
+                      <option value="ferry">מעבורת</option>
+                      <option value="other">אחר</option>
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="מספר"
+                      value={departure.number}
+                      onChange={(e) => setDeparture({ ...departure, number: e.target.value })}
+                      className="px-3 py-2 bg-background border border-card-border rounded-xl text-xs"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="מאיפה"
+                    value={departure.from}
+                    onChange={(e) => setDeparture({ ...departure, from: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-card-border rounded-xl text-xs"
+                  />
+                  <input
+                    type="text"
+                    placeholder="לאן"
+                    value={departure.to}
+                    onChange={(e) => setDeparture({ ...departure, to: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-card-border rounded-xl text-xs"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="date"
+                      value={departure.date}
+                      onChange={(e) => setDeparture({ ...departure, date: e.target.value })}
+                      className="px-3 bg-background border border-card-border rounded-xl text-xs"
+                    />
+                    <input
+                      type="time"
+                      value={departure.time}
+                      onChange={(e) => setDeparture({ ...departure, time: e.target.value })}
+                      className="px-3 bg-background border border-card-border rounded-xl text-xs"
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
         );
@@ -363,77 +536,25 @@ export default function NewTripPage() {
         return (
           <div className="animate-fade-in space-y-4">
             <div className="text-center mb-6">
-              <span className="text-4xl mb-3 block">❤️</span>
-              <h2 className="text-xl font-bold">מה אתם אוהבים?</h2>
-              <p className="text-sm text-muted mt-1">בחרו לפחות אחד</p>
+              <span className="text-4xl mb-3 block">💬</span>
+              <h2 className="text-xl font-bold">הנחיות ל-AI</h2>
+              <p className="text-sm text-muted mt-1">הכל שעוזר לתכנון מותאם</p>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              {INTERESTS.map((interest) => (
-                <button
-                  key={interest.id}
-                  onClick={() => toggleInterest(interest.id)}
-                  className={`p-3 rounded-2xl border-2 transition-all text-center active:scale-[0.98] ${
-                    form.interests.includes(interest.id)
-                      ? 'border-primary bg-primary/5'
-                      : 'border-card-border bg-card'
-                  }`}
-                >
-                  <span className="text-xl block mb-1">{interest.icon}</span>
-                  <span className="text-xs font-medium">{interest.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        );
-
-      case 6:
-        return (
-          <div className="animate-fade-in space-y-4">
-            <div className="text-center mb-6">
-              <span className="text-4xl mb-3 block">⏰</span>
-              <h2 className="text-xl font-bold">קצב הטיול</h2>
-            </div>
-            <div className="space-y-3">
-              {[
-                { value: 'relaxed', label: 'רגוע', desc: '2-3 פעילויות ביום, הרבה זמן חופשי', icon: '🐢' },
-                { value: 'moderate', label: 'מאוזן', desc: '3-4 פעילויות ביום, איזון מושלם', icon: '🚶' },
-                { value: 'intensive', label: 'אינטנסיבי', desc: '5+ פעילויות, למצות כל רגע', icon: '🏃' },
-              ].map((p) => (
-                <button
-                  key={p.value}
-                  onClick={() => updateForm({ pace: p.value as FormData['pace'] })}
-                  className={`w-full text-right p-4 rounded-2xl border-2 transition-all active:scale-[0.98] ${
-                    form.pace === p.value
-                      ? 'border-primary bg-primary/5'
-                      : 'border-card-border bg-card'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">{p.icon}</span>
-                    <div>
-                      <div className="font-bold">{p.label}</div>
-                      <div className="text-sm text-muted">{p.desc}</div>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">שעת השכמה מועדפת</label>
-              <input
-                type="time"
-                value={form.wakeUpTime}
-                onChange={(e) => updateForm({ wakeUpTime: e.target.value })}
-                className="w-full px-4 py-3.5 bg-card border border-card-border rounded-2xl text-base focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-              />
-            </div>
+            <textarea
+              placeholder="לדוגמה:&#10;- חובה לראות את הקולוסיאום&#10;- אנחנו לא אוהבים מקומות תיירותיים&#10;- רוצים לחוות את החיים המקומיים&#10;- מעדיפים מסעדות לא יקרות אבל איכותיות&#10;- חשוב לי שיהיה זמן ספונטני בכל יום"
+              value={customInstructions}
+              onChange={(e) => setCustomInstructions(e.target.value)}
+              rows={10}
+              className="w-full px-4 py-3 bg-card border border-card-border rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all resize-none"
+            />
+            <p className="text-xs text-muted">כל מה שתכתבו כאן יעזור ל-AI להבין מה אתם מחפשים</p>
           </div>
         );
     }
   };
 
   return (
-    <div className="min-h-screen pb-6">
+    <div className="min-h-screen pb-32">
       <Header title="טיול חדש" showBack />
 
       {/* Progress bar */}
@@ -449,9 +570,7 @@ export default function NewTripPage() {
           ))}
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-xs text-muted">
-            שלב {step + 1} מתוך {STEPS.length}
-          </span>
+          <span className="text-xs text-muted">שלב {step + 1} מתוך {STEPS.length}</span>
           <span className="text-xs text-muted">{STEPS[step].title}</span>
         </div>
       </div>
@@ -477,9 +596,7 @@ export default function NewTripPage() {
               onClick={() => setStep((s) => s + 1)}
               disabled={!canProceed()}
               className={`flex-1 py-3 rounded-2xl text-sm font-bold transition-all active:scale-95 flex items-center justify-center gap-2 ${
-                canProceed()
-                  ? 'bg-primary text-white hover:bg-primary-dark'
-                  : 'bg-card-border text-muted cursor-not-allowed'
+                canProceed() ? 'bg-primary text-white hover:bg-primary-dark' : 'bg-card-border text-muted cursor-not-allowed'
               }`}
             >
               <span>הבא</span>
@@ -488,20 +605,11 @@ export default function NewTripPage() {
           ) : (
             <button
               onClick={handleSubmit}
-              disabled={loading}
+              disabled={!canProceed()}
               className="flex-1 py-3 rounded-2xl text-sm font-bold bg-primary text-white hover:bg-primary-dark transition-all active:scale-95 flex items-center justify-center gap-2"
             >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>AI מתכנן את הטיול...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  <span>תכנן את הטיול!</span>
-                </>
-              )}
+              <Sparkles className="w-4 h-4" />
+              <span>צור טיול וקבל המלצות</span>
             </button>
           )}
         </div>

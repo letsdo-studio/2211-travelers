@@ -131,14 +131,11 @@ export default function RadiusExplorer({
   const [showDayPicker, setShowDayPicker] = useState<string | null>(null);
   const zones = generateRadiusZones(activities);
 
-  // Check if an activity exists in any day (by name match)
-  const getActivityDayStatus = (activityName: string): { dayNumber: number; status: string } | null => {
+  // Check if an activity is scheduled in any day (by id)
+  const getActivityDayStatus = (activityId: string): { dayNumber: number; status: string } | null => {
     for (const day of allDays) {
-      const found = day.activities.find(
-        (a) => a.name === activityName
-      );
-      if (found) {
-        return { dayNumber: day.dayNumber, status: found.status || 'suggested' };
+      if (day.activityIds?.includes(activityId)) {
+        return { dayNumber: day.dayNumber, status: 'confirmed' };
       }
     }
     return null;
@@ -244,7 +241,7 @@ export default function RadiusExplorer({
               </div>
               <div className="space-y-2">
                 {priorityActivities.map((activity) => {
-                  const dayStatus = getActivityDayStatus(activity.name);
+                  const dayStatus = getActivityDayStatus(activity.id);
                   const isSkipped = activity.status === 'skipped';
 
                   return (

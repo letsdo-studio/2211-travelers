@@ -18,12 +18,15 @@ export async function POST(request: NextRequest) {
 
     const ai = new GoogleGenAI({ apiKey });
 
-    const prompt = `אתה עוזר טיולים חכם ואישי. המטייל נמצא ב${trip.destination}.
+    const destinationName = trip.destinations?.map((d) => d.name).join(', ') || 'יעד';
+
+    const prompt = `אתה עוזר טיולים חכם ואישי. המטייל נמצא ב${destinationName}.
 
 פרטי הטיול:
-- יעד: ${trip.destination}
+- יעד: ${destinationName}
 - תאריכים: ${trip.startDate} עד ${trip.endDate}
 - מספר ימים: ${trip.itinerary.length}
+- מטרה: ${trip.purpose || 'לא צוין'}
 
 שאלת המטייל: ${message}
 

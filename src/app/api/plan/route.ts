@@ -1,96 +1,161 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
-import { TravelerProfile } from '@/lib/types';
+import { TravelerProfile, Destination, TransportInfo } from '@/lib/types';
+
+interface PlanRequest {
+  travelers: TravelerProfile[];
+  destinations: Destination[];
+  startDate: string;
+  endDate: string;
+  numDays: number;
+  purpose: string;
+  customInstructions: string;
+  arrival: TransportInfo | null;
+  departure: TransportInfo | null;
+  apiKey?: string;
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const { profile, destination, startDate, numDays, apiKey: clientKey } = await request.json() as {
-      profile: TravelerProfile;
-      destination: string;
-      startDate: string;
-      numDays: number;
-      apiKey?: string;
-    };
+    const body = await request.json() as PlanRequest;
+    const {
+      travelers, destinations, startDate, endDate, numDays,
+      purpose, customInstructions, arrival, departure,
+      apiKey: clientKey,
+    } = body;
 
     const apiKey = process.env.GEMINI_API_KEY || clientKey;
-
     if (!apiKey) {
       return NextResponse.json({ error: 'No Gemini API key configured' }, { status: 400 });
     }
 
     const ai = new GoogleGenAI({ apiKey });
 
-    const prompt = `אתה מתכנן טיולים מקצועי. תכנן טיול מפורט ל-${destination} למשך ${numDays} ימים.
-מתחיל בתאריך: ${startDate}
+    const travelersDesc = travelers.map((t, i) => `
+מטייל ${i + 1}: ${t.name}
+- סגנון: ${t.travelStyle === 'spontaneous' ? 'ספונטני' : t.travelStyle === 'planned' ? 'מתוכנן' : 'משולב'}
+- תקציב ללילה: €${t.budgetPerNight.min}-${t.budgetPerNight.max}
+- רמת לינה: ${t.accommodationLevel}
+- תחומי עניין: ${t.interests.join(', ')}
+- קצב: ${t.pace === 'relaxed' ? 'רגוע' : t.pace === 'moderate' ? 'מאוזן' : 'אינטנסיבי'}
+- שעת השכמה: ${t.wakeUpTime}
+- העדפות אוכל: בוקר=${t.foodPreferences.breakfast}, צהריים=${t.foodPreferences.lunch}, ערב=${t.foodPreferences.dinner}, קפה=${t.foodPreferences.coffee}
+- חשוב למטייל הזה: ${t.importantThings || 'כללי'}
+- צרכים מיוחדים: ${t.specialNeeds || 'אין'}
+`).join('\n');
 
-פרופיל המטיילים:
-- שמות: ${profile.names}
-- סגנון: ${profile.travelStyle === 'spontaneous' ? 'ספונטני' : profile.travelStyle === 'planned' ? 'מתוכנן' : 'משולב'}
-- תקציב ללילה: €${profile.budgetPerNight.min}-${profile.budgetPerNight.max}
-- רמת לינה: ${profile.accommodationLevel}
-- תחומי עניין: ${profile.interests.join(', ')}
-- קצב: ${profile.pace === 'relaxed' ? 'רגוע' : profile.pace === 'moderate' ? 'מאוזן' : 'אינטנסיבי'}
-- השכמה: ${profile.wakeUpTime}
-- אוכל - בוקר: ${profile.foodPreferences.breakfast}, צהריים: ${profile.foodPreferences.lunch}, ערב: ${profile.foodPreferences.dinner}, קפה: ${profile.foodPreferences.coffee}
-- צרכים מיוחדים: ${profile.specialNeeds || 'אין'}
+    const destinationsDesc = destinations.map((d, i) =>
+      `יעד ${i + 1}: ${d.name}${d.country ? `, ${d.country}` : ''} (${d.startDate} עד ${d.endDate})`
+    ).join('\n');
 
-חובה לכלול:
-1. לכל יום: פעילויות מחולקות ל-3 עדיפויות: "must" (חובה), "should" (כדאי), "if-time" (אם יש זמן)
-2. המלצות אוכל: בוקר, צהריים, ערב, קפה - עם שמות מסעדות אמיתיים ומחירים
-3. לינה מומלצת עם חלופות
-4. העברות בין מקומות עם זמנים מדויקים
-5. טיפים על רמת עומס תיירותי ושעות מומלצות לביקור
-6. הערות על נוף מיוחד בדרך, שקיעות, חוויות
+    const prompt = `אתה מתכנן טיולים מקצועי. יוצרים מאגר המלצות עשיר עבור הטיול הבא.
 
-החזר JSON תקין בלבד בפורמט הבא:
+**חשוב מאוד**: אתה לא משבץ פעילויות לימים ספציפיים! אתה רק מספק מאגר המלצות שהמטייל יבחר מהן ויסדר בעצמו.
+
+## פרטי הטיול:
+- שם: ${purpose ? `מטרה - ${purpose}` : 'טיול כללי'}
+- תאריכים: ${startDate} עד ${endDate} (${numDays} ימים)
+- מספר מטיילים: ${travelers.length}
+
+## יעדים:
+${destinationsDesc}
+
+## מטיילים:
+${travelersDesc}
+
+## הגעה ועזיבה:
+${arrival ? `הגעה: ${arrival.type} ${arrival.number || ''} מ-${arrival.from} ב-${arrival.date} בשעה ${arrival.time}` : 'לא צוין'}
+${departure ? `עזיבה: ${departure.type} ${departure.number || ''} ל-${departure.to} ב-${departure.date} בשעה ${departure.time}` : 'לא צוין'}
+
+## הנחיות מיוחדות מהמטייל:
+${customInstructions || 'אין'}
+
+## משימה:
+החזר מאגר המלצות עשיר ומפורט שמתחשב בהעדפות **של כל המטיילים** (גם אם הן שונות). אם מטייל אחד אוהב יוגה ואחר אוהב שווקי לילה - תכלול שניהם.
+
+חשוב לכלול:
+1. **אטרקציות מגוונות** - 12-20 אטרקציות מחולקות ל"חובה", "כדאי", "אם יש זמן" (לכל יעד)
+2. **תיאור איזורי** - הסבר קצר על כל יעד ומה החוויה העיקרית בו
+3. **מלונות מומלצים** - 3-5 לכל יעד (תקציב/בינוני/פרימיום) עם יתרונות וחסרונות
+4. **מסעדות לכל ארוחה** - בוקר, צהריים, ערב, קפה - עם שמות אמיתיים
+5. **המלצות תחבורה**:
+   - בין יעדים (אם יש כמה) - רכבת/אוטובוס/טיסה עם זמנים
+   - בתוך העיר - תחבורה ציבורית, אופניים, הליכה
+   - נקודה לנקודה - איך הכי טוב להגיע מאטרקציה אחת לאחרת
+6. **טיפים על עומס תיירותי** ושעות מומלצות לביקור
+
+החזר JSON תקין בלבד בפורמט המדויק:
 {
-  "itinerary": [
+  "destinations": [
     {
-      "date": "YYYY-MM-DD",
-      "dayNumber": 1,
-      "location": "שם המקום",
-      "accommodation": {
-        "name": "שם",
-        "type": "סוג",
-        "pricePerNight": "€XX",
-        "checkIn": "HH:MM",
-        "checkOut": "HH:MM",
-        "location": "כתובת",
-        "rating": "X/5",
-        "bookingStatus": "suggested",
-        "alternatives": ["חלופה 1", "חלופה 2"]
-      },
-      "activities": [
-        {
-          "id": "unique-id",
-          "name": "שם",
-          "description": "תיאור",
-          "priority": "must",
-          "startTime": "HH:MM",
-          "endTime": "HH:MM",
-          "location": "מיקום",
-          "cost": "€XX",
-          "tips": "טיפים",
-          "crowdLevel": "רמת עומס",
-          "bestTimeToVisit": "שעה מומלצת",
-          "status": "suggested"
-        }
-      ],
-      "meals": [
-        {
-          "id": "unique-id",
-          "type": "breakfast",
-          "restaurant": "שם",
-          "description": "תיאור",
-          "priceRange": "€XX-XX",
-          "location": "מיקום",
-          "rating": "X/5",
-          "source": "מקור ההמלצה",
-          "status": "suggested"
-        }
-      ],
-      "transit": null,
-      "notes": "הערות ליום"
+      "id": "dest-1",
+      "name": "שם היעד",
+      "description": "תיאור קצר של 2-3 משפטים על היעד",
+      "highlights": ["דבר מרכזי 1", "דבר מרכזי 2", "דבר מרכזי 3"]
+    }
+  ],
+  "attractions": [
+    {
+      "id": "att-1",
+      "name": "שם",
+      "description": "תיאור קצר",
+      "priority": "must",
+      "duration": "X שעות",
+      "startTime": "HH:MM",
+      "endTime": "HH:MM",
+      "location": "מיקום",
+      "cost": "€X",
+      "tips": "טיפים פרקטיים",
+      "crowdLevel": "רמת עומס וזמנים",
+      "bestTimeToVisit": "המלצה לזמן ביקור",
+      "destinationName": "שם היעד",
+      "category": "history|nature|food|art|nightlife|shopping|adventure|beach|culture|local"
+    }
+  ],
+  "meals": [
+    {
+      "id": "meal-1",
+      "type": "breakfast",
+      "restaurant": "שם",
+      "description": "תיאור",
+      "priceRange": "€XX-XX",
+      "location": "כתובת/אזור",
+      "rating": "X.X/5",
+      "source": "מקור ההמלצה",
+      "destinationName": "שם היעד",
+      "cuisine": "סוג מטבח"
+    }
+  ],
+  "accommodations": [
+    {
+      "id": "acc-1",
+      "name": "שם",
+      "type": "מלון/Airbnb/הוסטל",
+      "pricePerNight": "€XX",
+      "checkIn": "15:00",
+      "checkOut": "11:00",
+      "location": "אזור",
+      "rating": "X.X/5",
+      "bookingStatus": "suggested",
+      "alternatives": [],
+      "destinationName": "שם היעד",
+      "pros": ["יתרון 1"],
+      "cons": ["חסרון 1"]
+    }
+  ],
+  "transports": [
+    {
+      "id": "trans-1",
+      "from": "מאיפה",
+      "to": "לאן",
+      "mode": "אופנוע/אופניים/הליכה/רכבת/אוטובוס",
+      "alternativeModes": ["חלופה 1", "חלופה 2"],
+      "duration": "X דקות",
+      "cost": "€X",
+      "notes": "טיפים והערות",
+      "status": "suggested",
+      "scenic": true,
+      "category": "inter-city"
     }
   ]
 }`;
@@ -105,8 +170,6 @@ export async function POST(request: NextRequest) {
     });
 
     const text = response.text || '';
-
-    // Parse JSON
     let jsonText = text.trim();
     jsonText = jsonText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
     const firstBrace = jsonText.indexOf('{');
