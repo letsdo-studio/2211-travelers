@@ -20,7 +20,13 @@ export async function POST(request: NextRequest) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.7,
+      },
+    });
 
     const prompt = `אתה מתכנן טיולים מקצועי. תכנן טיול מפורט ל-${destination} למשך ${numDays} ימים.
 מתחיל בתאריך: ${startDate}
@@ -111,17 +117,39 @@ export async function POST(request: NextRequest) {
     const response = result.response;
     const text = response.text();
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return NextResponse.json({ error: 'Invalid AI response' }, { status: 500 });
+    // Try to extract JSON from response - handle markdown code blocks too
+    let jsonText = text.trim();
+    // Remove markdown code fences if present
+    jsonText = jsonText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
+    // Find first { and last }
+    const firstBrace = jsonText.indexOf('{');
+    const lastBrace = jsonText.lastIndexOf('}');
+    if (firstBrace === -1 || lastBrace === -1) {
+      return NextResponse.json(
+        { error: `No JSON found in Gemini response. Raw: ${text.slice(0, 200)}` },
+        { status: 500 }
+      );
+    }
+    jsonText = jsonText.slice(firstBrace, lastBrace + 1);
+
+    let data;
+    try {
+      data = JSON.parse(jsonText);
+    } catch (parseErr) {
+      return NextResponse.json(
+        {
+          error: `JSON parse error: ${parseErr instanceof Error ? parseErr.message : 'unknown'}. Raw: ${jsonText.slice(0, 200)}`,
+        },
+        { status: 500 }
+      );
     }
 
-    const data = JSON.parse(jsonMatch[0]);
     return NextResponse.json(data);
   } catch (error) {
     console.error('Plan API error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Failed to generate plan' },
+      { error: `Gemini API error: ${errorMessage}` },
       { status: 500 }
     );
   }

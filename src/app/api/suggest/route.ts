@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     const prompt = `אתה עוזר טיולים חכם ואישי. המטייל נמצא ב${trip.destination}.
 
@@ -45,8 +45,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ response: text });
   } catch (error) {
     console.error('Suggest API error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Failed to generate suggestion' },
+      { error: `Gemini API error: ${errorMessage}` },
       { status: 500 }
     );
   }
